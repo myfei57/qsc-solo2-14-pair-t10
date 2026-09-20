@@ -1,6 +1,7 @@
 const STATE = {
   batches: [],
   tanks: [],
+  releaseView: null,
 };
 
 async function apiGet(path) {
@@ -265,6 +266,159 @@ async function loadTrend() {
   const trend = await apiGet("/api/telemetry/batches/" + batchId + "/trend");
   write("trend-view", trend);
   return trend;
+}
+
+const QUALITY_METRICS = [
+  "alcohol_abv",
+  "original_extract",
+  "co2",
+  "ibu",
+  "ph",
+  "apparent_attenuation",
+  "turbidity",
+  "microbial",
+];
+
+async function initQualityPage() {
+  await loadBanner();
+  await loadCompletedBatches();
+  await loadQualityQueue();
+  await renderRelease(await loadReleaseView());
+}
+
+async function loadCompletedBatches() {
+  const payload = await apiGet("/api/batches?stage=completed");
+  const select = element("batch-select");
+  select.innerHTML = "";
+  payload.batches.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = item.code + " · " + item.stage;
+    select.appendChild(option);
+  });
+  return payload.batches;
+}
+
+async function loadQualityQueue() {
+  const queue = await apiGet("/api/quality/queue");
+  const byStatus = queue.by_status || {};
+  write("q-pending", byStatus.pending || 0);
+  write("q-retest", byStatus.retest || 0);
+  write("q-held", byStatus.held || 0);
+  write("q-concession", queue.pending_concessions || 0);
+  write("queue-view", queue);
+  return queue;
+}
+
+async function loadReleaseView() {
+  const batchId = value("batch-select");
+  if (!batchId) {
+    return null;
+  }
+  const view = await apiGet("/api/batches/" + batchId + "/release");
+  STATE.releaseView = view;
+  return view;
+}
+
+async function renderRelease(view) {
+  if (!view) {
+    return;
+  }
+  await loadQualityQueue();
+  write("decision-view", view.decision ? {
+    status: view.decision.status,
+    suggested: view.decision.suggested,
+    round: view.decision.round,
+    reasons: view.decision.reasons,
+    metric_results: view.decision.metric_results,
+    process_findings: view.decision.process_findings,
+    decided_by: view.decision.decided_by,
+    released_at: view.decision.released_at,
+    disposition: view.decision.disposition,
+  } : "尚无化验单");
+  write("concession-view", view.concessions);
+  write("release-audit", view.audit);
+  const panel = element("decision-panel");
+  const decision = view.decision;
+  if (!decision) {
+    panel.textContent = "该批次还没有终检记录。";
+    return;
+  }
+  const terminal = ["released", "concession_released", "rejected"];
+  panel.textContent = terminal.includes(decision.status)
+    ? "已终判：" + decision.status + "（" + (decision.disposition || "") + "），不可再变更。"
+    : "工作状态：" + decision.status + "；规则建议：" + decision.suggested;
+}
+
+function collectLabMetrics() {
+  return QUALITY_METRICS.map((name) => ({ name, value: numberValue("m-" + name) }));
+}
+
+async function submitLabReport() {
+  const batchId = value("batch-select");
+  return apiPost("/api/batches/" + batchId + "/lab-report", {
+    metrics: collectLabMetrics(),
+    actor: value("operator") || "lab",
+  });
+}
+
+async function releaseBatch() {
+  const batchId = value("batch-select");
+  return apiPost("/api/batches/" + batchId + "/release", {
+    actor: value("operator") || "qc",
+    note: "终检与工艺记录符合放行要求",
+  });
+}
+
+async function holdBatch(reason) {
+  if (!reason) {
+    throw new Error("必须填写扣留原因");
+  }
+  const batchId = value("batch-select");
+  return apiPost("/api/batches/" + batchId + "/hold", {
+    actor: value("operator") || "qc",
+    reason,
+  });
+}
+
+async function rejectBatch(reason) {
+  if (!reason) {
+    throw new Error("必须填写拒收原因");
+  }
+  const batchId = value("batch-select");
+  return apiPost("/api/batches/" + batchId + "/reject", {
+    actor: value("operator") || "qc",
+    reason,
+  });
+}
+
+function pendingConcessionId(view) {
+  const pending = (view && view.concessions ? view.concessions : []).filter(
+    (item) => item.status === "pending"
+  );
+  return pending.length ? pending[pending.length - 1].id : null;
+}
+
+async function requestConcession() {
+  const batchId = value("batch-select");
+  return apiPost("/api/batches/" + batchId + "/concession", {
+    actor: value("operator") || "qa",
+    reason: value("concession-reason"),
+    proposed_disposition: value("concession-disposition"),
+  });
+}
+
+async function reviewConcession(approve) {
+  const view = STATE.releaseView || (await loadReleaseView());
+  const concessionId = pendingConcessionId(view);
+  if (!concessionId) {
+    throw new Error("该批次没有待审批的让步申请");
+  }
+  return apiPost("/api/quality/concessions/" + concessionId + "/review", {
+    approver: value("approver") || "manager",
+    approve,
+    note: approve ? "同意让步接收" : "不同意让步接收",
+  });
 }
 
 document.addEventListener("DOMContentLoaded", () => {

@@ -68,6 +68,18 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/alarms"),
     ("POST", "/api/alarms/{alarm_id}/ack"),
     ("POST", "/api/alarms/{alarm_id}/resolve"),
+    ("GET", "/api/quality/specs"),
+    ("POST", "/api/quality/specs"),
+    ("GET", "/api/quality/queue"),
+    ("GET", "/api/quality/decisions"),
+    ("GET", "/api/quality/concessions"),
+    ("GET", "/api/batches/{batch_id}/release"),
+    ("POST", "/api/batches/{batch_id}/lab-report"),
+    ("POST", "/api/batches/{batch_id}/release"),
+    ("POST", "/api/batches/{batch_id}/hold"),
+    ("POST", "/api/batches/{batch_id}/reject"),
+    ("POST", "/api/batches/{batch_id}/concession"),
+    ("POST", "/api/quality/concessions/{concession_id}/review"),
     ("GET", "/api/audit"),
 )
 
@@ -521,6 +533,106 @@ class ApiRouter:
             params["alarm_id"], body.get("operator"), body.get("note")
         )
         return {"alarm": serializers.alarm_view(alarm)}
+
+    def _handle_GET_api_quality_specs(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        items = self.registry.release.list_specs(_first(query, "brewery_id"))
+        return {"specs": items}
+
+    def _handle_POST_api_quality_specs(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        spec = self.registry.release.define_spec(
+            brewery_id=body.get("brewery_id"),
+            style=body.get("style", "*"),
+            metrics=_require_list(body, "metrics"),
+            actor=body.get("actor", "console"),
+        )
+        return {"spec": spec}
+
+    def _handle_GET_api_quality_queue(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.registry.release.queue()
+
+    def _handle_GET_api_quality_decisions(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        items = self.registry.release.list_decisions(status=_first(query, "status"))
+        return {"decisions": items}
+
+    def _handle_GET_api_quality_concessions(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        items = self.registry.release.list_concessions(status=_first(query, "status"))
+        return {"concessions": items}
+
+    def _handle_GET_api_batches_batch_id_release(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.registry.release.decision_view(params["batch_id"])
+
+    def _handle_POST_api_batches_batch_id_lab_report(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.registry.release.submit_lab_report(
+            batch_id=params["batch_id"],
+            metrics=_require_list(body, "metrics"),
+            actor=body.get("actor", "console"),
+            sampled_at=body.get("sampled_at"),
+            note=str(body.get("note", "")),
+        )
+
+    def _handle_POST_api_batches_batch_id_release(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.registry.release.release(
+            params["batch_id"],
+            actor=body.get("actor", "console"),
+            note=str(body.get("note", "")),
+        )
+
+    def _handle_POST_api_batches_batch_id_hold(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.registry.release.hold(
+            params["batch_id"],
+            actor=body.get("actor", "console"),
+            reason=body.get("reason", ""),
+        )
+
+    def _handle_POST_api_batches_batch_id_reject(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.registry.release.reject(
+            params["batch_id"],
+            actor=body.get("actor", "console"),
+            reason=body.get("reason", ""),
+        )
+
+    def _handle_POST_api_batches_batch_id_concession(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self.registry.release.request_concession(
+            batch_id=params["batch_id"],
+            actor=body.get("actor", "console"),
+            reason=body.get("reason", ""),
+            proposed_disposition=body.get("proposed_disposition", ""),
+        )
+
+    def _handle_POST_api_quality_concessions_concession_id_review(
+        self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]
+    ) -> dict[str, Any]:
+        approve = body.get("approve")
+        if not isinstance(approve, bool):
+            raise ValidationError("approve 必须是布尔值", field="approve")
+        return self.registry.release.review_concession(
+            concession_id=params["concession_id"],
+            approver=body.get("approver", "console"),
+            approve=approve,
+            note=body.get("note", ""),
+        )
 
     def _handle_GET_api_audit(
         self, params: dict[str, str], query: dict[str, list[str]], body: dict[str, Any]

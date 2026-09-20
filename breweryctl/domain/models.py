@@ -105,6 +105,26 @@ class PressureState(str, Enum):
     LATCHED = "latched"
 
 
+class ReleaseStatus(str, Enum):
+    """成品放行结论的生命周期。"""
+
+    PENDING = "pending"
+    RETEST = "retest"
+    HELD = "held"
+    RELEASED = "released"
+    CONCESSION_RELEASED = "concession_released"
+    REJECTED = "rejected"
+
+
+class ConcessionStatus(str, Enum):
+    """让步接收申请的审批状态。"""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
 class ReadingQuality(str, Enum):
     """温度采样质量。"""
 
@@ -396,3 +416,73 @@ class Batch(DocMixin):
     created_at: str = ""
     updated_at: str = ""
     completed_at: str | None = None
+
+
+@dataclass
+class QcSpec(DocMixin):
+    """成品终检指标规格，按工厂与酒种匹配放行判定。"""
+
+    id: str
+    brewery_id: str
+    style: str
+    version: int = 1
+    metrics: list[dict[str, Any]] = field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class LabReport(DocMixin):
+    """一批成品的一次终检化验单。"""
+
+    id: str
+    batch_id: str
+    brewery_id: str
+    round: int
+    metrics: list[dict[str, Any]] = field(default_factory=list)
+    sampled_at: str = ""
+    submitted_at: str = ""
+    submitted_by: str = ""
+    note: str = ""
+
+
+@dataclass
+class ReleaseDecision(DocMixin):
+    """按终检指标与工艺记录给出的批次放行结论。"""
+
+    id: str
+    batch_id: str
+    brewery_id: str
+    status: str = ReleaseStatus.PENDING.value
+    suggested: str = ReleaseStatus.PENDING.value
+    round: int = 0
+    lab_report_id: str | None = None
+    metric_results: list[dict[str, Any]] = field(default_factory=list)
+    process_findings: list[dict[str, Any]] = field(default_factory=list)
+    reasons: list[str] = field(default_factory=list)
+    concession_id: str | None = None
+    decided_by: str | None = None
+    decided_at: str | None = None
+    released_at: str | None = None
+    disposition: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class ConcessionRequest(DocMixin):
+    """扣留批次的让步接收申请，审批留痕后才可让步放行。"""
+
+    id: str
+    batch_id: str
+    brewery_id: str
+    decision_id: str
+    status: str = ConcessionStatus.PENDING.value
+    reason: str = ""
+    deviation_summary: list[str] = field(default_factory=list)
+    proposed_disposition: str = ""
+    requested_by: str = ""
+    requested_at: str = ""
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    review_note: str | None = None

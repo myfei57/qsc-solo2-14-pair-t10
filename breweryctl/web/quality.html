@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BreweryCtl · 成品放行</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>BreweryCtl 成品放行</h1>
+      <nav>
+        <a href="/mash">糖化</a>
+        <a href="/ferment">发酵</a>
+        <a href="/cip">清洗 CIP</a>
+        <a href="/alarms">告警与审计</a>
+        <a class="active" href="/quality">成品放行</a>
+      </nav>
+    </header>
+    <div class="banner">
+      待判 <strong id="q-pending">-</strong>
+      待复检 <strong id="q-retest">-</strong>
+      扣留 <strong id="q-held">-</strong>
+      让步待批 <strong id="q-concession">-</strong>
+    </div>
+    <main>
+      <section>
+        <h2>放行队列</h2>
+        <label for="operator">当前用户（化验/质量）</label>
+        <input id="operator" value="lab-li" />
+        <label for="approver">让步审批人（须与申请人不同）</label>
+        <input id="approver" value="manager-qian" />
+        <label for="batch-select">已完成批次</label>
+        <select id="batch-select"></select>
+        <button onclick="run(loadReleaseView, 'release-log', renderRelease)">刷新放行档案</button>
+        <pre id="queue-view">尚未加载</pre>
+      </section>
+
+      <section>
+        <h2>登记终检化验单</h2>
+        <p class="hint">按终检指标逐项填写，提交后系统自动给出 放行/复检/扣留 建议。</p>
+        <table>
+          <thead>
+            <tr><th>指标</th><th>实测值</th><th>指标</th><th>实测值</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>酒精度 %vol (4.5–5.5)</td><td><input id="m-alcohol_abv" value="5.0" /></td>
+              <td>原麦汁浓度 °P (11–13)</td><td><input id="m-original_extract" value="12.0" /></td>
+            </tr>
+            <tr>
+              <td>CO₂ % (0.45–0.70)</td><td><input id="m-co2" value="0.58" /></td>
+              <td>苦味值 IBU (25–45)</td><td><input id="m-ibu" value="35.0" /></td>
+            </tr>
+            <tr>
+              <td>pH（关键，4.0–4.6）</td><td><input id="m-ph" value="4.3" /></td>
+              <td>真发度 % (75–85)</td><td><input id="m-apparent_attenuation" value="80.0" /></td>
+            </tr>
+            <tr>
+              <td>浊度 EBC（关键，≤0.9）</td><td><input id="m-turbidity" value="0.5" /></td>
+              <td>微生物（关键，0=合格）</td><td><input id="m-microbial" value="0" /></td>
+            </tr>
+          </tbody>
+        </table>
+        <button onclick="run(submitLabReport, 'release-log', renderRelease)">提交化验单并判定</button>
+      </section>
+
+      <section>
+        <h2>判定结论与依据</h2>
+        <div id="decision-panel">请选择批次并刷新。</div>
+        <pre id="decision-view"></pre>
+      </section>
+
+      <section>
+        <h2>处置操作</h2>
+        <button class="primary" onclick="run(() => releaseBatch(''), 'release-log', renderRelease)">正式放行</button>
+        <button class="secondary" onclick="run(() => holdBatch(prompt('扣留原因')), 'release-log', renderRelease)">人工扣留</button>
+        <button class="secondary" onclick="run(() => rejectBatch(prompt('拒收/报废原因')), 'release-log', renderRelease)">拒收报废</button>
+      </section>
+
+      <section>
+        <h2>让步接收（需独立审批）</h2>
+        <label for="concession-reason">偏差与让步理由</label>
+        <input id="concession-reason" placeholder="如：苦味值偏高，客户确认可接受" />
+        <label for="concession-disposition">处置方式</label>
+        <input id="concession-disposition" placeholder="如：定向渠道销售、加贴标识" />
+        <button onclick="run(requestConcession, 'release-log', renderRelease)">发起让步申请</button>
+        <button onclick="run(() => reviewConcession(true), 'release-log', renderRelease)">审批同意</button>
+        <button class="secondary" onclick="run(() => reviewConcession(false), 'release-log', renderRelease)">审批驳回</button>
+        <pre id="concession-view"></pre>
+      </section>
+
+      <section>
+        <h2>批次审计留痕</h2>
+        <pre id="release-audit">尚未加载</pre>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+    <script>
+      initQualityPage();
+    </script>
+  </body>
+</html>

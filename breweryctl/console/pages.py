@@ -49,6 +49,18 @@ PAGE_CATALOG: tuple[dict[str, Any], ...] = (
         "description": "告警确认、解除与批次审计查询",
         "api": ["/api/alarms", "/api/alarms/{alarm_id}/ack", "/api/audit"],
     },
+    {
+        "slug": "quality",
+        "title": "成品放行",
+        "file": "quality.html",
+        "description": "终检化验单登记、规则判定、放行扣留与让步审批",
+        "api": [
+            "/api/batches/{batch_id}/lab-report",
+            "/api/batches/{batch_id}/release",
+            "/api/batches/{batch_id}/concession",
+            "/api/quality/concessions/{concession_id}/review",
+        ],
+    },
 )
 
 

@@ -80,3 +80,33 @@ def sanitize_tank(app: Application, tank_id: str) -> dict[str, Any]:
 
 def first_tank(app: Application) -> str:
     return str(app.registry.tanks.list_tanks()[0]["id"])
+
+
+def complete_batch(app: Application, batch_id: str, *, maturation_days: float = 14.0) -> None:
+    """跑完全部工艺，把批次推进到 completed，供成品放行测试使用。"""
+
+    brewing = app.registry
+    mash_to_filter(app, batch_id)
+    boil_to_cooling(app, batch_id)
+    tank_id = first_tank(app)
+    sanitize_tank(app, tank_id)
+    brewing.brewing.mark_cooled(batch_id, 10.0, "tester")
+    brewing.brewing.transfer_to_tank(batch_id, tank_id, "tester")
+    brewing.brewing.pitch_yeast(batch_id, tank_id, 10.0, 12.0, "tester")
+    brewing.brewing.mature_batch(batch_id, tank_id, maturation_days, "tester")
+    brewing.brewing.complete_batch(batch_id, "tester")
+    resolve_batch_alarms(app, batch_id)
+
+
+def resolve_batch_alarms(app: Application, batch_id: str) -> int:
+    """确认并关闭批次上残留的告警，模拟现场处置闭环。"""
+
+    center = app.registry.alarms
+    resolved = 0
+    for alarm in center.list_alarms(status="active"):
+        if alarm.get("context", {}).get("batch_id") != batch_id:
+            continue
+        center.acknowledge(str(alarm["id"]), "tester")
+        center.resolve(str(alarm["id"]), "tester", "测试辅助：已处置")
+        resolved += 1
+    return resolved
