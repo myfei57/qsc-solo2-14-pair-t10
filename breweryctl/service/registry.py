@@ -15,6 +15,7 @@ from ..domain.ferment import FermentTankService
 from ..domain.hop import HopSchedule
 from ..domain.mash import MashController
 from ..domain.ns import NamespaceRegistry
+from ..domain.quality import QualitySpecRegistry
 from ..domain.recipe import RecipeRegistry
 from ..domain.temp import TemperatureController
 from ..domain.wort import WortSystem
@@ -22,6 +23,7 @@ from ..persistence.store import FileStore
 from .brewing import BrewingService
 from .control import ControlService
 from .maintenance import MaintenanceService
+from .quality import QualityReleaseService
 from .telemetry import TelemetryService
 
 
@@ -65,6 +67,17 @@ class ComponentRegistry:
         self.control = ControlService(self.temp, self.co2, self.alarms, self.audit)
         self.telemetry = TelemetryService(self.temp, self.alarms, self.audit)
         self.maintenance = MaintenanceService(self.cip, self.tanks, self.audit)
+        self.quality_specs = QualitySpecRegistry(self.store, self.clock)
+        self.quality = QualityReleaseService(
+            self.store,
+            self.clock,
+            self.brewing,
+            self.quality_specs,
+            self.alarms,
+            self.audit,
+        )
+        self.brewing.release_gate = self.quality.require_released
+        self.brewing.release_lookup = self.quality.get_decision
 
     def bootstrap(self) -> dict[str, Any]:
         """确保存在可运行的默认命名空间、罐体、探头与配方。"""
@@ -106,6 +119,8 @@ class ComponentRegistry:
         if not self.recipes.list():
             recipe = self._seed_recipe(str(brewery["id"]))
             created["recipe"] = recipe["id"]
+        spec = self.quality_specs.seed_default(str(brewery["id"]), "default")
+        created["quality_spec"] = spec["id"] if spec else None
         created["recovered"] = self.brewing.recover()
         self.store.set_meta("booted_at", format_moment(self.clock.now()))
         return created
@@ -131,6 +146,7 @@ class ComponentRegistry:
             "maintenance": self.maintenance.summary(),
             "control": self.control.summary(),
             "alarms": self.alarms.summary(),
+            "quality": self.quality.summary(),
             "audit_entries": self.audit.count(),
             "tanks": self.tanks.list_tanks(),
         }

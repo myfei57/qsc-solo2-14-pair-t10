@@ -8,7 +8,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from .helpers import StepClock, create_batch, make_app
+from .helpers import PASSING_METRICS, StepClock, brew_to_mature, create_batch, make_app
 
 
 class ApiTest(unittest.TestCase):
@@ -44,8 +44,8 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertIn("banner", overview)
         status, pages = self.call("GET", "/api/pages")
-        self.assertEqual(4, len(pages["pages"]))
-        self.assertGreaterEqual(len(pages["routes"]), 50)
+        self.assertEqual(5, len(pages["pages"]))
+        self.assertGreaterEqual(len(pages["routes"]), 60)
 
     def test_sequence_error_maps_to_conflict(self) -> None:
         batch_id = create_batch(self.app)
@@ -59,6 +59,48 @@ class ApiTest(unittest.TestCase):
         status, payload = self.call("GET", "/api/does-not-exist")
         self.assertEqual(404, status)
         self.assertEqual("not_found", payload["error"])
+
+    def test_quality_release_flow_over_http(self) -> None:
+        batch_id, _ = brew_to_mature(self.app)
+        status, preview = self.call("GET", f"/api/batches/{batch_id}/release/preview")
+        self.assertEqual(200, status)
+        self.assertEqual("maturing", preview["stage"])
+        self.assertIsNotNone(preview["spec"])
+
+        status, payload = self.call(
+            "POST",
+            f"/api/batches/{batch_id}/inspection",
+            {"metrics": PASSING_METRICS, "actor": "qa-li", "report_no": "COA-1"},
+        )
+        self.assertEqual(200, status)
+        self.assertEqual("released", payload["status"])
+
+        status, payload = self.call(
+            "POST", f"/api/batches/{batch_id}/complete", {"actor": "qa-li"}
+        )
+        self.assertEqual(200, status)
+        self.assertEqual("completed", payload["batch"]["stage"])
+
+    def test_concession_requires_privileged_role_over_http(self) -> None:
+        batch_id, _ = brew_to_mature(self.app)
+        bad_metrics = dict(PASSING_METRICS, ph=5.0)
+        self.call(
+            "POST",
+            f"/api/batches/{batch_id}/inspection",
+            {"metrics": bad_metrics, "actor": "qa-li", "report_no": "COA-2"},
+        )
+        self.call(
+            "POST",
+            f"/api/batches/{batch_id}/concession/request",
+            {"reason": "pH 偏高", "requester": "qa-li", "proposed_use": "降级"},
+        )
+        status, payload = self.call(
+            "POST",
+            f"/api/batches/{batch_id}/concession/approve",
+            {"approver": "foreman", "approver_role": "foreman", "note": "同意"},
+        )
+        self.assertEqual(400, status)
+        self.assertEqual("validation_error", payload["error"])
 
     def test_static_pages_are_served(self) -> None:
         with urllib.request.urlopen(self.base + "/mash", timeout=10) as response:

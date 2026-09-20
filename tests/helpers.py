@@ -80,3 +80,39 @@ def sanitize_tank(app: Application, tank_id: str) -> dict[str, Any]:
 
 def first_tank(app: Application) -> str:
     return str(app.registry.tanks.list_tanks()[0]["id"])
+
+
+def mature_batch(app: Application, batch_id: str, *, days: float = 14.0) -> str:
+    """跑完降温、转罐、接种、发酵与成熟，返回发酵罐 id。"""
+
+    brewing = app.registry.brewing
+    tank_id = first_tank(app)
+    sanitize_tank(app, tank_id)
+    brewing.transfer_to_tank(batch_id, tank_id, "tester")
+    brewing.pitch_yeast(batch_id, tank_id, 10.0, 10.0, "tester")
+    brewing.mature_batch(batch_id, tank_id, days, "tester")
+    return tank_id
+
+
+def brew_to_mature(app: Application, *, days: float = 14.0) -> tuple[str, str]:
+    """从开批一路跑到成熟，返回 (batch_id, tank_id)。"""
+
+    batch_id = create_batch(app)
+    mash_to_filter(app, batch_id)
+    boil_to_cooling(app, batch_id)
+    brewing = app.registry.brewing
+    brewing.mark_cooled(batch_id, 10.0, "tester")
+    tank_id = mature_batch(app, batch_id, days=days)
+    return batch_id, tank_id
+
+
+# 一组全部落在默认规格内的终检数值
+PASSING_METRICS = {
+    "fg": 1.012,
+    "abv": 5.0,
+    "ph": 4.2,
+    "co2": 2.5,
+    "ibu": 35.0,
+    "turbidity": 20.0,
+    "diacetyl": 0.08,
+}

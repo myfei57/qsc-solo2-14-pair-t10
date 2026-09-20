@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BreweryCtl · 成品放行</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>BreweryCtl 成品放行</h1>
+      <nav>
+        <a href="/mash">糖化</a>
+        <a href="/ferment">发酵</a>
+        <a href="/cip">清洗 CIP</a>
+        <a href="/alarms">告警与审计</a>
+        <a class="active" href="/quality">成品放行</a>
+      </nav>
+    </header>
+    <div class="banner">
+      在制批次 <strong id="banner-batches">-</strong>
+      占用罐体 <strong id="banner-tanks">-</strong>
+      活跃告警 <strong id="banner-alarms">-</strong>
+      闩锁 <strong id="banner-latches">-</strong>
+    </div>
+    <main>
+      <section>
+        <h2>批次选择</h2>
+        <label for="batch-select">成熟批次</label>
+        <select id="batch-select" onchange="refreshRelease()"></select>
+        <label for="operator">质量员</label>
+        <input id="operator" value="console" />
+        <button class="secondary" onclick="refreshRelease()">刷新</button>
+        <pre id="release-view">尚未加载</pre>
+      </section>
+
+      <section>
+        <h2>工艺记录核对</h2>
+        <pre id="preview-view">录入终检前自动核对成熟状态、清洗凭证、告警、酒花投加与成熟天数</pre>
+      </section>
+
+      <section>
+        <h2>终检化验录入</h2>
+        <p class="hint">按质量规格逐项录入化验单数值，提交后自动判定 放行 / 复检 / 扣留。</p>
+        <div id="metric-form"></div>
+        <label for="lab-report">化验单编号</label>
+        <input id="lab-report" placeholder="如 COA-20260920-03" />
+        <label for="lab-name">化验机构</label>
+        <input id="lab-name" placeholder="如 厂内质检室" />
+        <button onclick="run(submitInspection, 'quality-log', refreshRelease)">提交终检判定</button>
+        <div id="quality-log"></div>
+      </section>
+
+      <section>
+        <h2>扣留与判废</h2>
+        <label for="hold-reason">扣留/判废原因</label>
+        <input id="hold-reason" placeholder="必须写明依据" />
+        <button class="secondary" onclick="run(() => apiPost(batchPath('/hold'), { reason: value('hold-reason'), actor: value('operator') }), 'quality-log', refreshRelease)">
+          手动扣留
+        </button>
+        <button class="secondary" onclick="run(() => apiPost(batchPath('/reject-goods'), { reason: value('hold-reason'), actor: value('operator') }), 'quality-log', refreshRelease)">
+          判废
+        </button>
+      </section>
+
+      <section>
+        <h2>让步接收审批</h2>
+        <p class="hint">关键指标（如双乙酰）不合格或存在安全类记录时，不允许让步接收。</p>
+        <label for="concession-reason">让步事由</label>
+        <input id="concession-reason" placeholder="偏差描述与风险评估" />
+        <label for="concession-use">拟定用途/流向</label>
+        <input id="concession-use" placeholder="如 降级为内部品鉴酒" />
+        <button onclick="run(requestConcession, 'quality-log', refreshRelease)">发起让步申请</button>
+        <div class="inline">
+          <div>
+            <label for="approver">批准人</label>
+            <input id="approver" placeholder="不能是申请人本人" />
+          </div>
+          <div>
+            <label for="approver-role">批准角色</label>
+            <select id="approver-role">
+              <option value="qa_manager">质量负责人</option>
+              <option value="plant_manager">厂长</option>
+            </select>
+          </div>
+        </div>
+        <label for="approval-note">审批意见</label>
+        <input id="approval-note" placeholder="批准条件或驳回理由" />
+        <button onclick="run(approveConcession, 'quality-log', refreshRelease)">批准并放行</button>
+        <button class="secondary" onclick="run(rejectConcession, 'quality-log', refreshRelease)">驳回申请</button>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+    <script>
+      initQualityPage();
+    </script>
+  </body>
+</html>

@@ -61,6 +61,9 @@ class BrewingService:
         self.alarms = alarms
         self.audit = audit
         self.batches = store.collection(BATCHES)
+        # 由装配层注入：结批前必须取得成品放行结论
+        self.release_gate: Any | None = None
+        self.release_lookup: Any | None = None
 
     def create_batch(
         self,
@@ -296,10 +299,12 @@ class BrewingService:
         return self.status(batch_id)
 
     def complete_batch(self, batch_id: str, actor: str) -> dict[str, Any]:
-        """完成成熟并释放配额。"""
+        """完成成熟并释放配额；必须先取得成品放行结论。"""
 
         batch = self._require_batch(batch_id)
         self._require_stage(batch, BatchStage.MATURING.value)
+        if self.release_gate is not None:
+            self.release_gate(batch_id)
         now = format_moment(self.clock.now())
         updated = merge_documents(
             batch,
@@ -374,6 +379,8 @@ class BrewingService:
             view["temperature"] = setpoint
         if batch.get("tank_id"):
             view["tank"] = self.tanks.status(str(batch["tank_id"]))
+        if self.release_lookup is not None:
+            view["release"] = self.release_lookup(batch_id)
         return view
 
     def list_batches(self, stage: str | None = None) -> list[dict[str, Any]]:

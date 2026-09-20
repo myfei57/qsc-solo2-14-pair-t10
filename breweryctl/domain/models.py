@@ -113,6 +113,17 @@ class ReadingQuality(str, Enum):
     REJECTED = "rejected"
 
 
+class ReleaseStatus(str, Enum):
+    """成品放行判定生命周期。"""
+
+    PENDING = "pending"
+    RETEST = "retest"
+    HELD = "held"
+    CONCESSION_REQUESTED = "concession_requested"
+    RELEASED = "released"
+    REJECTED = "rejected"
+
+
 class DocMixin:
     """把数据类转换为可持久化文档。"""
 
@@ -396,3 +407,73 @@ class Batch(DocMixin):
     created_at: str = ""
     updated_at: str = ""
     completed_at: str | None = None
+
+
+@dataclass
+class QualityMetric(DocMixin):
+    """质量规格中的一个终检指标。"""
+
+    key: str
+    label: str
+    unit: str
+    lower: float | None = None
+    upper: float | None = None
+    retest_band: float = 0.0
+    critical: bool = False
+
+
+@dataclass
+class QualitySpec(DocMixin):
+    """按工厂与酒种配置的成品放行标准。"""
+
+    id: str
+    brewery_id: str
+    style: str
+    metrics: list[dict[str, Any]] = field(default_factory=list)
+    current_version: int = 1
+    created_at: str = ""
+    updated_at: str = ""
+    versions: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class InspectionRound(DocMixin):
+    """一轮终检结果快照。"""
+
+    round: int
+    verdict: str
+    metrics: list[dict[str, Any]] = field(default_factory=list)
+    evidence: list[dict[str, Any]] = field(default_factory=list)
+    submitted_by: str = ""
+    submitted_at: str = ""
+    laboratory: str | None = None
+    report_no: str | None = None
+    note: str = ""
+
+
+@dataclass
+class ReleaseDecision(DocMixin):
+    """一个批次的放行判定单据（状态机 + 不可变轮次历史）。"""
+
+    id: str
+    batch_id: str
+    brewery_id: str
+    spec_id: str
+    spec_version: int
+    status: str = ReleaseStatus.PENDING.value
+    round: int = 0
+    verdict: str | None = None
+    rounds: list[dict[str, Any]] = field(default_factory=list)
+    events: list[dict[str, Any]] = field(default_factory=list)
+    held_reason: str | None = None
+    held_by: str | None = None
+    held_at: str | None = None
+    concession: dict[str, Any] | None = None
+    released_by: str | None = None
+    released_at: str | None = None
+    release_mode: str | None = None
+    reject_reason: str | None = None
+    rejected_by: str | None = None
+    rejected_at: str | None = None
+    created_at: str = ""
+    updated_at: str = ""

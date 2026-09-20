@@ -177,6 +177,109 @@ async function initAlarmsPage() {
   await loadBatches("audit-batch-select");
 }
 
+async function initQualityPage() {
+  await loadBanner();
+  await loadMatureBatches("batch-select");
+  await refreshRelease();
+}
+
+async function loadMatureBatches(selectId) {
+  const payload = await apiGet("/api/batches?stage=maturing");
+  const select = element(selectId);
+  if (select) {
+    select.innerHTML = "";
+    payload.batches.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = item.code + " · " + item.stage;
+      select.appendChild(option);
+    });
+  }
+  return payload.batches;
+}
+
+function batchPath(suffix) {
+  return "/api/batches/" + value("batch-select") + suffix;
+}
+
+async function refreshRelease() {
+  const batchId = value("batch-select");
+  if (!batchId) {
+    return null;
+  }
+  const decision = await apiGet("/api/batches/" + batchId + "/release");
+  write("release-view", decision);
+  const preview = await apiGet("/api/batches/" + batchId + "/release/preview");
+  write("preview-view", preview);
+  renderMetricForm(preview.spec ? preview.spec.metrics : []);
+  return decision;
+}
+
+function renderMetricForm(metrics) {
+  const form = element("metric-form");
+  if (!form) {
+    return;
+  }
+  form.innerHTML = "";
+  metrics.forEach((metric) => {
+    const wrap = document.createElement("div");
+    wrap.className = "metric-row";
+    const range =
+      (metric.lower === null ? "-∞" : metric.lower) + " ~ " + (metric.upper === null ? "+∞" : metric.upper);
+    const label = document.createElement("label");
+    label.textContent = metric.label + " (" + range + " " + (metric.unit || "") + ")" + (metric.critical ? " ★关键" : "");
+    const input = document.createElement("input");
+    input.id = "metric-" + metric.key;
+    input.type = "number";
+    input.step = "0.001";
+    input.dataset.key = metric.key;
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+    form.appendChild(wrap);
+  });
+}
+
+function collectMetrics() {
+  const values = {};
+  document.querySelectorAll("#metric-form input[data-key]").forEach((input) => {
+    values[input.dataset.key] = Number(input.value);
+  });
+  return values;
+}
+
+async function submitInspection() {
+  return apiPost(batchPath("/inspection"), {
+    metrics: collectMetrics(),
+    report_no: value("lab-report"),
+    laboratory: value("lab-name"),
+    actor: value("operator"),
+  });
+}
+
+async function requestConcession() {
+  return apiPost(batchPath("/concession/request"), {
+    reason: value("concession-reason"),
+    proposed_use: value("concession-use"),
+    requester: value("operator"),
+  });
+}
+
+async function approveConcession() {
+  return apiPost(batchPath("/concession/approve"), {
+    approver: value("approver"),
+    approver_role: value("approver-role"),
+    note: value("approval-note"),
+  });
+}
+
+async function rejectConcession() {
+  return apiPost(batchPath("/concession/reject"), {
+    approver: value("approver"),
+    approver_role: value("approver-role"),
+    note: value("approval-note"),
+  });
+}
+
 async function loadAlarms() {
   const status = value("alarm-status") || "active";
   const payload = await apiGet("/api/alarms?status=" + encodeURIComponent(status));
